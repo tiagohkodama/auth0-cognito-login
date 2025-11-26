@@ -1,693 +1,376 @@
-# auth0-cognito-login
+# Auth0-Cognito Login System
 
-Issue: Build POC app demonstrating Auth0 + AWS Cognito authentication (React + Python + Docker)
+A secure authentication system demonstrating integration of AWS Cognito and Auth0 with account linking capabilities.
 
----
+## Features
 
-> You are a senior full-stack engineer.
+- **Dual Authentication Flows**:
+  - AWS Cognito federated with Auth0 (OIDC)
+  - Direct Auth0 authentication
+- **Account Linking**: Users can link multiple identity providers to a single account
+- **Secure Token Management**: JWT access tokens (in-memory) + httpOnly refresh tokens
+- **Modern Stack**: FastAPI backend + React.js frontend
+- **Production-Ready**: Docker Compose deployment with PostgreSQL
 
-Follow the specification in this issue exactly.
+## Prerequisites
 
-Do not introduce new features beyond what is required.
+- Docker and Docker Compose
+- AWS Cognito User Pool (with Auth0 federation configured)
+- Auth0 Accounts
 
-Keep the implementation small, clear, and focused on:
+## Setup Instructions
 
-Auth0 login on the frontend.
+### 1. Clone and Configure
 
-JWT validation on the backend.
+```bash
+git clone <repository-url>
+cd auth0-cognito-login
+```
 
-AWS Cognito integration using AWS credentials.
+### 2. Environment Variables
 
-Dockerized local environment.
+Copy the example environment file and fill in your credentials:
 
+```bash
+cp .env.example .env
+```
 
-Avoid complex abstractions; prioritize readability and explicitness.
+Edit `.env` with your actual values:
+
+```bash
+# Generate secure keys
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Required configurations:
+- `JWT_SECRET_KEY`: Your generated secret key
+- `COGNITO_*`: AWS Cognito User Pool details
+- `AUTH0_RESEARCH_*`: Auth0 tenant details
+- `DB_PASSWORD`: Secure database password
+
+### 3. AWS Cognito Configuration
+
+#### Create User Pool
+
+1. Go to AWS Cognito Console
+2. Create a new User Pool
+3. Configure email as username
+4. Create an App Client with client secret
+5. Configure Hosted UI domain
+
+#### Add Auth0 as OIDC Identity Provider
+
+1. In your User Pool, go to "Sign-in experience" → "Federated identity provider sign-in"
+2. Add OIDC provider:
+   - **Provider name**: Auth0-Fashion
+   - **Client ID**: From Auth0 Fashion application
+   - **Client secret**: From Auth0 Fashion application
+   - **Issuer URL**: `https://<your-Fashion-domain>.auth0.com/`
+   - **Scopes**: `openid email profile`
+   - **Attribute mapping**:
+     - email → email
+     - sub → username
+
+3. In App client settings:
+   - Enable Authorization code grant
+   - Set callback URL: `http://localhost:8000/api/v1/auth/callback/cognito`
+   - Enable the Auth0-Fashion identity provider
+
+### 4. Auth0 Configuration
+
+#### Fashion Tenant
+
+1. Create a Regular Web Application
+2. Add Allowed Callback URLs: Your Cognito callback URL
+3. Note the Domain, Client ID, and Client Secret
+
+#### Research Catalog Tenant
+
+1. Create a Regular Web Application
+2. Set Allowed Callback URLs: `http://localhost:8000/api/v1/auth/callback/auth0`
+3. Set Allowed Logout URLs: `http://localhost:3000/login`
+4. Note the Domain, Client ID, and Client Secret
+
+### 5. Run with Docker Compose
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Or run in detached mode
+docker-compose up -d --build
+```
+
+Services will be available at:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
+- PostgreSQL: localhost:5432
+
+### 6. Database Migrations
+
+Run migrations inside the backend container:
+
+```bash
+docker-compose exec backend alembic upgrade head
+```
+
+## Project Structure
+
+```
+auth0-cognito-login/
+├── backend/                    # FastAPI Backend
+│   ├── app/
+│   │   ├── main.py            # FastAPI app initialization
+│   │   ├── config.py          # Environment configuration
+│   │   ├── database.py        # SQLAlchemy setup
+│   │   ├── models/            # Database models
+│   │   ├── schemas/           # Pydantic schemas
+│   │   ├── services/          # Business logic
+│   │   │   ├── cognito_service.py
+│   │   │   ├── auth0_service.py
+│   │   │   ├── jwt_service.py
+│   │   │   ├── user_service.py
+│   │   │   └── link_service.py
+│   │   ├── routers/           # API endpoints
+│   │   │   ├── auth.py
+│   │   │   ├── user.py
+│   │   │   └── link.py
+│   │   ├── dependencies/      # Dependency injection
+│   │   └── utils/             # Utilities
+│   ├── alembic/               # Database migrations
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── frontend/                   # React Frontend
+│   ├── src/
+│   │   ├── App.js             # Main app component
+│   │   ├── index.js           # Entry point
+│   │   ├── context/           # React Context
+│   │   │   └── AuthContext.js
+│   │   ├── pages/             # Page components
+│   │   │   ├── LoginPage.js
+│   │   │   ├── CallbackPage.js
+│   │   │   └── HomePage.js
+│   │   ├── components/        # Reusable components
+│   │   │   └── Auth/
+│   │   │       └── ProtectedRoute.js
+│   │   ├── services/          # API services
+│   │   │   ├── api.js
+│   │   │   ├── authService.js
+│   │   │   └── userService.js
+│   │   └── utils/
+│   │       └── tokenManager.js
+│   ├── package.json
+│   └── Dockerfile
+│
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
+
+## API Endpoints
+
+### Authentication
+
+- `POST /api/v1/auth/login/cognito` - Initiate Cognito OAuth flow
+- `POST /api/v1/auth/login/auth0` - Initiate Auth0 OAuth flow
+- `GET /api/v1/auth/callback/cognito` - Handle Cognito callback
+- `GET /api/v1/auth/callback/auth0` - Handle Auth0 callback
+- `POST /api/v1/auth/refresh` - Refresh access token
+- `POST /api/v1/auth/logout` - Logout and revoke tokens
+
+### User (Protected)
+
+- `GET /api/v1/user/profile` - Get user profile with linked accounts
+
+### Account Linking (Protected)
+
+- `POST /api/v1/link/start/{provider}` - Start account linking
+- `GET /api/v1/link/callback/{provider}` - Complete account linking
+- `DELETE /api/v1/link/{provider}` - Unlink account
+
+### Health
+
+- `GET /api/v1/health` - Health check
+
+## Security Features
+
+### Token Management
+
+- **Access Tokens**:
+  - Stored in memory only (prevents XSS attacks)
+  - Short-lived (15 minutes)
+  - JWT format with user claims
+
+- **Refresh Tokens**:
+  - Stored in httpOnly cookies (prevents XSS)
+  - Long-lived (7 days)
+  - Hashed in database (SHA256)
+  - Automatic rotation on refresh
+
+### Logout Flow
+
+1. Frontend calls logout endpoint
+2. Backend revokes refresh token in database
+3. Backend calls Cognito/Auth0 revocation endpoints
+4. httpOnly cookie cleared
+5. In-memory access token cleared
+6. User redirected to login
+
+### CSRF Protection
+
+- OAuth2 state parameter with cryptographic verification
+- CORS configured for specific origins
+- SameSite=Strict cookie attribute
+
+### Input Validation
+
+- Pydantic schemas validate all inputs
+- SQLAlchemy ORM prevents SQL injection
+- Email normalization (lowercase)
+
+## Development
+
+### Backend Development
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run development server
+uvicorn app.main:app --reload
+```
+
+### Frontend Development
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run development server
+npm start
+```
+
+### Database Migrations
+
+```bash
+# Create new migration
+cd backend
+alembic revision --autogenerate -m "description"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback
+alembic downgrade -1
+```
 
-Where tradeoffs exist, prefer simplicity and clarity over cleverness.
+## Testing
 
+### Manual Testing Flow
 
----
+1. Navigate to http://localhost:3000
+2. Click "Fashion Login" or "Research Catalog Login"
+3. Authenticate with provider
+4. Verify redirect to home page with user profile
+5. Test logout functionality
+6. Test account linking (login with one provider, link another)
 
-0. Purpose & Scope
+## Troubleshooting
 
-Build a small, simple, but production-style POC that clearly demonstrates:
+### Database Connection Issues
 
-A React frontend with:
+```bash
+# Check if PostgreSQL is running
+docker-compose ps
 
-Login via Auth0.
+# View database logs
+docker-compose logs db
 
-A basic Home page displaying authenticated user info.
+# Restart database
+docker-compose restart db
+```
 
+### Backend Issues
 
-A Python backend API that:
+```bash
+# View backend logs
+docker-compose logs backend
 
-Receives the Auth0 credentials/token from the frontend.
+# Restart backend
+docker-compose restart backend
 
-Verifies the token.
+# Check environment variables
+docker-compose exec backend env | grep COGNITO
+```
 
-Uses AWS Cognito, configured to use the same Auth0 application (OIDC), and calls Cognito with AWS access/secret key + session token.
+### Frontend Issues
 
+```bash
+# View frontend logs
+docker-compose logs frontend
 
-Everything runs locally via Docker/Docker Compose, while Auth0 + Cognito are "real" cloud services.
+# Rebuild frontend
+docker-compose up -d --build frontend
+```
 
+### Token Issues
 
-The goal is portfolio-quality: clean structure, clear configuration, minimal but realistic.
+- Clear browser cookies
+- Clear localStorage/sessionStorage
+- Check JWT expiration in backend logs
+- Verify refresh token in database
 
-> Treat this as if you are implementing it to showcase your experience with authentication integrations in interviews.
+## Production Deployment
 
+Before deploying to production:
 
+1. **Generate New Secrets**:
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
 
+2. **Update Environment**:
+   - Set `APP_ENV=production`
+   - Use HTTPS URLs for all callbacks
+   - Update CORS_ORIGINS to production domain
 
----
+3. **Database**:
+   - Use managed PostgreSQL (AWS RDS, etc.)
+   - Enable SSL connections
+   - Regular backups
 
-1. High-level Architecture
+4. **Monitoring**:
+   - Setup logging aggregation
+   - Configure error tracking
+   - Health check monitoring
 
-Auth Flow (happy path):
+5. **Security**:
+   - Enable rate limiting
+   - Use secrets manager (AWS Secrets Manager, etc.)
+   - Regular security audits
 
-1. User opens React app at http://localhost:<frontend-port>.
+## Tech Stack
 
+- **Backend**: Python 3.11, FastAPI, SQLAlchemy, Alembic
+- **Frontend**: React 18, React Router, Axios
+- **Database**: PostgreSQL 15
+- **Authentication**: AWS Cognito, Auth0, JWT
+- **Deployment**: Docker, Docker Compose
 
-2. User clicks Login.
+## License
 
+MIT
 
-3. React app uses Auth0 SPA flow (Universal Login or hosted login) to authenticate the user.
+## Author
 
-
-4. Auth0 issues an ID token / access token (JWT).
-
-
-5. React app stores the token (in memory or secure storage) and:
-
-Shows a Home page with user profile info (from the token).
-
-Sends the token to the backend in API calls (e.g. Authorization: Bearer <access_token>).
-
-
-
-6. Python backend:
-
-Validates the incoming Auth0 JWT (issuer, audience, signature, expiry).
-
-Uses AWS SDK with AWS access key, secret key, and optional session token from environment variables.
-
-Calls AWS Cognito (User Pool or Identity Pool), which is pre-configured to use Auth0 as an OIDC IdP using the same Auth0 application.
-
-Returns a simple JSON response (e.g. “Hello, <user>, Cognito call OK”).
-
-
-
-
-Important constraints:
-
-Local only:
-
-Frontend and backend run as Docker containers on the developer machine.
-
-Auth0 and AWS Cognito are real services configured in their dashboards.
-
-
-No secrets in repo. Use environment variables and .env files referenced in Docker.
-
-
-
----
-
-2. Repo Structure
-
-Implement as a single repository:
-
-root/
-  frontend/          # React app
-  backend/           # Python API
-  docker-compose.yml
-  README.md
-  .env               # root-level (optional) – do not commit
-  .gitignore
-
-
----
-
-3. Global Configuration & Environment
-
-3.1. Required Environment Variables
-
-Define the following (exact names can be adjusted but must be consistent and documented):
-
-Auth0:
-
-AUTH0_DOMAIN
-
-AUTH0_CLIENT_ID
-
-AUTH0_CLIENT_SECRET (if needed for backend / machine-to-machine)
-
-AUTH0_AUDIENCE (API identifier configured in Auth0)
-
-
-AWS / Cognito:
-
-AWS_ACCESS_KEY_ID
-
-AWS_SECRET_ACCESS_KEY
-
-AWS_SESSION_TOKEN (optional, if using temporary credentials)
-
-AWS_REGION
-
-COGNITO_USER_POOL_ID or COGNITO_IDENTITY_POOL_ID (depending on chosen integration)
-
-COGNITO_CLIENT_ID (for the app in Cognito, if used)
-
-COGNITO_AUTH0_PROVIDER_NAME (e.g. the OIDC IdP name configured in Cognito that represents Auth0)
-
-
-Runtime:
-
-BACKEND_PORT (e.g. 8000)
-
-FRONTEND_PORT (e.g. 3000)
-
-BACKEND_BASE_URL (e.g. http://backend:8000 inside Docker, http://localhost:8000 outside)
-
-
-> To do
-
-[ ] Add .env.example with all env var names and short descriptions.
-
-[ ] Add .gitignore entries for .env, node_modules, Python venv, build folders.
-
-
-
-
-
----
-
-4. Backend (Python) – Detailed Requirements
-
-Choose a simple framework such as FastAPI or Flask. Use whichever is more comfortable, but ensure:
-
-Clear routing.
-
-Easy JWT validation.
-
-Minimal dependencies.
-
-
-4.1. Backend Goals
-
-Expose a health check endpoint (no auth).
-
-Expose a protected endpoint that:
-
-Requires a valid Auth0 JWT (sent by frontend).
-
-Verifies the JWT.
-
-Uses AWS SDK to call Cognito (e.g. simple “describe” or “get” call).
-
-Returns a JSON payload to the frontend including:
-
-Authenticated user identifier from the JWT (e.g. sub, email).
-
-A small subset of information returned by Cognito (or at least confirmation that Cognito call succeeded).
-
-
-
-
-4.2. Backend API Design
-
-Endpoints:
-
-1. GET /health
-
-Purpose: Liveness check.
-
-Auth: None.
-
-Response: { "status": "ok" }.
-
-
-
-2. GET /me
-
-Purpose: Demo authenticated endpoint.
-
-Auth: Requires Auth0 JWT.
-
-Input:
-
-Authorization: Bearer <access_token> header sent by frontend.
-
-
-Backend logic (pseudocode-style):
-
-token = extract_bearer_token(request.headers["Authorization"])
-jwt_payload = validate_jwt_with_auth0(token)
-
-user_id = jwt_payload["sub"]
-user_email = jwt_payload.get("email")
-
-# Call Cognito using AWS SDK
-cognito_result = call_cognito_with_aws_credentials(user_id, jwt_payload)
-
-return {
-  "auth0_user": {
-    "sub": user_id,
-    "email": user_email,
-    # optionally more claims
-  },
-  "cognito_result": cognito_result_minimal_summary
-}
-
-Error handling:
-
-Invalid/missing token → 401 Unauthorized with simple JSON.
-
-AWS/Cognito error → 502 Bad Gateway or 500 with minimal error info.
-
-
-
-
-
-4.3. JWT Validation Requirements
-
-Use Auth0’s JWKS to verify signature.
-
-Validate:
-
-iss matches https://<AUTH0_DOMAIN>/.
-
-aud matches AUTH0_AUDIENCE (or AUTH0_CLIENT_ID, depending on the flow).
-
-exp not expired.
-
-
-Cache JWKS keys to avoid fetching for every request.
-
-
-> To do
-
-[ ] Configure a small JWT validation helper/module.
-
-[ ] Add unit tests (or at least basic tests) for the validator using a mocked token.
-
-
-
-
-4.4. Cognito Integration
-
-Use AWS SDK for Python (boto3).
-
-Load AWS credentials from environment variables.
-
-
-High-level options (choose one and implement):
-
-1. Cognito User Pool + Auth0 as OIDC IdP
-
-Cognito is configured to accept Auth0 tokens as an external IdP (using the same Auth0 app).
-
-Backend scenario: use Cognito admin APIs to fetch some user-related data based on a mapping from Auth0 sub to Cognito user attributes.
-
-
-
-2. Cognito Identity Pool using Auth0 as IdP
-
-Backend scenario: use the Auth0 token to obtain temporary AWS credentials or validate mapping.
-
-
-
-
-For this POC, keep the code extremely simple:
-
-Implement a function like:
-
-def call_cognito_with_aws_credentials(user_id, jwt_payload):
-    # Example: describe some Cognito resource or list attributes
-    client = boto3.client("cognito-idp", region_name=AWS_REGION)
-    # Choose a simple, non-destructive call:
-    response = client.describe_user_pool(UserPoolId=COGNITO_USER_POOL_ID)
-    return {
-        "user_pool_id": response["UserPool"]["Id"],
-        "name": response["UserPool"]["Name"]
-    }
-
-The focus is showing authenticated AWS access using AWS credentials, not implementing a full user management layer.
-
-
-> To do
-
-[ ] Implement call_cognito_with_aws_credentials.
-
-[ ] Handle AWS errors gracefully and map them to clean HTTP responses.
-
-
-
-
-4.5. Backend Dockerization
-
-Create backend/Dockerfile that:
-
-Uses a small Python base image.
-
-Copies requirements.txt and installs dependencies.
-
-Copies source code.
-
-Exposes BACKEND_PORT.
-
-Uses a clear CMD to run the app (e.g. uvicorn main:app --host 0.0.0.0 --port 8000 for FastAPI).
-
-
-The backend must read configuration from environment variables (passed from docker-compose.yml).
-
-
-> To do
-
-[ ] Add Dockerfile for backend.
-
-[ ] Verify containerization: app responds correctly to /health.
-
-
-
-
-4.6. Backend Acceptance Criteria
-
-[ ] GET /health returns {"status":"ok"} without authentication.
-
-[ ] GET /me without Authorization header returns 401.
-
-[ ] GET /me with a valid Auth0 access token:
-
-[ ] JWT is validated.
-
-[ ] call_cognito_with_aws_credentials is executed using AWS credentials from env.
-
-[ ] JSON response includes:
-
-[ ] Auth0 user sub and (if available) email.
-
-[ ] A field showing Cognito call succeeded (e.g. user pool name or a flag).
-
-
-
-[ ] Running backend via Docker (with correct env vars) works locally.
-
-
-
----
-
-5. Frontend (React) – Detailed Requirements
-
-Use a minimal React app, either plain React + Vite/CRA or similar. No need for heavy state management; keep it simple and focused on auth flow.
-
-5.1. Frontend Goals
-
-Two main views:
-
-Login Page
-
-Home Page (Protected)
-
-
-Use Auth0 SPA SDK (or React SDK) to:
-
-Redirect to Auth0 for login.
-
-Handle callback.
-
-Obtain ID / access tokens.
-
-
-Send the access token to backend as a Bearer token.
-
-
-5.2. UI Requirements
-
-Pages / Routes:
-
-1. / – Login/Welcome page
-
-Shows:
-
-App name (e.g. “Auth0 + Cognito POC”).
-
-A short description of the POC.
-
-A “Login with Auth0” button.
-
-
-If already authenticated, redirects to /home.
-
-
-
-2. /home – Protected Home page
-
-Only accessible if the user is authenticated with Auth0.
-
-Displays:
-
-Basic user profile: name, email, Auth0 sub.
-
-A button “Call Protected Backend /me”.
-
-
-On click:
-
-Calls backend /me with Authorization: Bearer <access_token>.
-
-Displays JSON response in a simple preformatted block.
-
-
-
-
-3. /callback – optional explicit route if needed:
-
-Handles Auth0 redirect callback (depending on library).
-
-
-
-
-Components:
-
-AuthProvider wrapper for providing Auth0 context (if using Auth0 React SDK).
-
-Reusable ProtectedRoute or equivalent to guard /home.
-
-
-> To do
-
-[ ] Setup routing (e.g. react-router-dom).
-
-[ ] Implement guarded route for /home.
-
-
-
-
-5.3. Auth0 Integration in Frontend
-
-Configure Auth0 client using environment variables (via build-time env, e.g. VITE_ or REACT_APP_):
-
-VITE_AUTH0_DOMAIN
-
-VITE_AUTH0_CLIENT_ID
-
-VITE_AUTH0_AUDIENCE
-
-VITE_AUTH0_REDIRECT_URI (e.g. http://localhost:<frontend-port>/callback)
-
-
-Initialization (pseudocode):
-
-<Auth0Provider
-  domain={AUTH0_DOMAIN}
-  clientId={AUTH0_CLIENT_ID}
-  authorizationParams={{
-    redirect_uri: VITE_AUTH0_REDIRECT_URI,
-    audience: VITE_AUTH0_AUDIENCE
-  }}
->
-  <App />
-</Auth0Provider>
-
-When calling backend /me:
-
-const token = await getAccessTokenSilently();
-fetch(`${BACKEND_BASE_URL}/me`, {
-  headers: { Authorization: `Bearer ${token}` }
-});
-
-
-> To do
-
-[ ] Display clear login/logout buttons and the current auth state.
-
-[ ] Ensure logout works (clear Auth0 session and app state).
-
-
-
-
-5.4. Frontend Dockerization
-
-Create frontend/Dockerfile that:
-
-Uses Node base image.
-
-Installs dependencies.
-
-Builds the app.
-
-Serves the built static files via a simple HTTP server (like nginx or Node's serve), or runs dev server for POC (document which).
-
-
-Environment variables for Auth0 and backend URL must be available at build time or runtime, depending on chosen approach.
-
-The frontend must be able to call backend via the Docker network (e.g. backend service name backend in docker-compose).
-
-
-> To do
-
-[ ] Add Dockerfile for frontend.
-
-[ ] Confirm frontend can reach backend /health and /me from inside Docker.
-
-
-
-
-5.5. Frontend Acceptance Criteria
-
-[ ] Visiting / shows a login button when not authenticated.
-
-[ ] Clicking Login redirects to Auth0 and then back to the app.
-
-[ ] After login, /home shows:
-
-[ ] User’s Auth0 sub and email.
-
-[ ] A button to call backend /me.
-
-
-[ ] Clicking “Call Protected Backend” displays JSON response from backend.
-
-[ ] Logging out returns user to an unauthenticated state, and /home becomes inaccessible.
-
-
-
----
-
-6. Docker Compose & Local Run
-
-Create docker-compose.yml in repo root:
-
-Services:
-
-frontend
-
-Build from ./frontend.
-
-Ports: "3000:3000" (or chosen FRONTEND_PORT).
-
-Environment:
-
-Auth0 env vars (frontend-specific).
-
-VITE_BACKEND_BASE_URL pointing to http://backend:<BACKEND_PORT>.
-
-
-
-backend
-
-Build from ./backend.
-
-Ports: "8000:8000" (or chosen BACKEND_PORT).
-
-Environment:
-
-Auth0 env vars.
-
-AWS credentials.
-
-Cognito identifiers.
-
-Any framework-specific settings.
-
-
-
-
-
-> To do
-
-[ ] Implement docker-compose.yml wiring frontend and backend together.
-
-[ ] Document single command to start everything (e.g. docker-compose up --build).
-
-
-
-
-
----
-
-7. Documentation (README)
-
-Create a concise but clear README.md that:
-
-1. Explains the purpose:
-
-POC showcasing Auth0 + AWS Cognito + local Dockerized React/Python stack.
-
-
-
-2. Lists prerequisites:
-
-Docker
-
-Docker Compose
-
-Auth0 tenant & application
-
-AWS account with Cognito configured to use Auth0 as OIDC IdP (same Auth0 app).
-
-
-
-3. Setup Steps (step-by-step):
-
-Clone repo.
-
-Copy .env.example to .env and fill in real Auth0/AWS values.
-
-Run docker-compose up --build.
-
-Open browser at http://localhost:<FRONTEND_PORT>.
-
-
-
-4. Auth Flow Description:
-
-Short section describing the end-to-end flow: user → Auth0 → React → Python → Cognito.
-
-
-
-5. Security Notes:
-
-Emphasize that it’s a POC; no secrets should ever be committed.
-
-Note that cookies/local storage vs in-memory token handling is simplified for demo purposes.
-
-
-
-
-> To do
-
-[ ] Add a small architecture diagram (ASCII or image) if desired, or just textual sequence steps.
-
-[ ] Highlight how this repo demonstrates knowledge of Auth0, Cognito, JWT, and Docker.
-
-
-
-
-
----
-
-8. Prompt-Style Guidance (for AI or future self)
-
-If this ticket is used as a prompt for another assistant or as a self-reminder, prepend something like:
+Built to demonstrate full-stack authentication expertise with AWS Cognito and Auth0 integration.
